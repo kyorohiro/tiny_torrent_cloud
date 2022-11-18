@@ -396,8 +396,8 @@ void listen(std::string ip, int port, std::string username,
       // std::string infohash_hex =
       //    my_base_encode::encode_hex(xx.info_hash().to_string());
       try {
-        boost::filesystem::create_directories(my_torrent::_downloaded_file_path+ "/"+
-                                              target_info.unique_id);
+        boost::filesystem::create_directories(
+            my_torrent::_downloaded_file_path + "/" + target_info.unique_id);
       } catch (...) {
       }
       boost::filesystem::rename(tmpPath, "./.data/" + target_info.unique_id +
@@ -423,7 +423,7 @@ void listen(std::string ip, int port, std::string username,
   //
   _http_server.Get("/downloaded/.*", [](const httplib::Request &req,
                                         httplib::Response &res) {
-    file_manager("downloaded", _target_file_path /*"./.data"*/, req, res);
+    file_manager("downloaded", my_torrent::_downloaded_file_path, req, res);
   });
   _http_server.Get(
       "/target/.*", [](const httplib::Request &req, httplib::Response &res) {
@@ -470,24 +470,26 @@ void file_manager(std::string base_url_path, std::string base_file_path,
   fs::path p(base_file_path + "/" + path);
   //
   if (fs::is_regular_file(p)) {
+    std::cout << "fs::is_regular_file(p)" << std::endl;
     const std::string path = p.string();
-    res.set_chunked_content_provider("application/octet-stream", //
-                                     [path](size_t s, httplib::DataSink &sink) {
-                                       int buffer_size = 1024 * 256;
-                                       char *buffer = new char[buffer_size];
-                                       std::ifstream input(path);
-                                       while (!input.eof() && !terminated) {
-                                         input.read(buffer, buffer_size);
-                                         int length = input.gcount();
-                                         if (length == 0) {
-                                           break;
-                                         }
-                                         sink.write(buffer, input.gcount());
-                                       }
-                                       sink.done();
-                                       delete buffer;
-                                       return true;
-                                     });
+    res.set_chunked_content_provider( //
+        "application/octet-stream",   //
+        [path](size_t s, httplib::DataSink &sink) {
+          int buffer_size = 1024 * 256;
+          char *buffer = new char[buffer_size];
+          std::ifstream input(path);
+          while (!input.eof() && !terminated) {
+            input.read(buffer, buffer_size);
+            int length = input.gcount();
+            if (length == 0) {
+              break;
+            }
+            sink.write(buffer, input.gcount());
+          }
+          sink.done();
+          delete buffer;
+          return true;
+        });
   } else {
     fs::directory_iterator itr(p);
     fs::directory_iterator end_itr;
