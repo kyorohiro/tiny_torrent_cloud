@@ -1,0 +1,39 @@
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Torrent Chaser</title>
+</head>
+
+<body>
+    <h1> Seed Data </h1>
+    <div>
+        <label>Input Distribution File</label>
+        <form id="formElem">
+            <input type="file" name="seed_file" accept="*/*">
+            <input type="submit">
+        </form>
+        <span id="output"></span><br>
+    </div>
+    <script>
+        let ot = document.getElementById("output");
+        formElem.onsubmit = async (e) => {
+            e.preventDefault();
+            ot.innerText = "送信中"
+            let res = await fetch('/api/seed_file', {
+                method: 'POST',
+                body: new FormData(formElem)
+            });
+            if (res.status == 200) {
+                ot.innerText = "成功";
+            } else {
+                ot.innerText = "失敗";
+            }
+            console.log(await res.text());
+        };
+    </script>
+
+
+</body>
+
+</html>

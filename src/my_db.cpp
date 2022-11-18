@@ -1,395 +1,371 @@
+#include "my_db.hpp"
 #include <iostream>
+#include <memory>
 #include <sqlite3.h>
 #include <sstream>
-#include <my_db.hpp>
-#include <memory>
 //
-#include <libtorrent/torrent_info.hpp>
 #include <libtorrent/magnet_uri.hpp>
+#include <libtorrent/torrent_info.hpp>
 
-#include <my_base_encode.hpp>
+#include "my_base_encode.hpp"
 #include <cstdio>
-#include <sstream>
 #include <fstream>
+#include <sstream>
 
 //
 #include <ctime>
 
 //
-namespace my_db
-{
-    //
-    sqlite3 *_db;
-    std::string _torrent_file_root_path;
-    int _the_range_of_time; // Number of searches after the specified number of seconds 
+namespace my_db {
+//
+sqlite3 *_db;
+std::string _torrent_file_root_path;
+int _the_range_of_time; // Number of searches after the specified number of
+                        // seconds
 
-    int callback(void *NotUsed, int argc, char **argv, char **azColName)
-    {
-        return 0;
+int callback(void *NotUsed, int argc, char **argv, char **azColName) {
+  return 0;
+}
+
+void setup(std::string dbpath, std::string torrent_file_root_path,
+           int the_range_of_time) {
+  _the_range_of_time = the_range_of_time;
+  _torrent_file_root_path = torrent_file_root_path;
+  {
+    int rc = sqlite3_open(dbpath.c_str(), &_db);
+    if (rc != SQLITE_OK) {
+      throw std::runtime_error("failed to open sqllite" +
+                               std::string(sqlite3_errmsg(_db)));
     }
+  }
 
-    void setup(std::string dbpath, std::string torrent_file_root_path, int the_range_of_time)
-    {
-        _the_range_of_time = the_range_of_time;
-        _torrent_file_root_path = torrent_file_root_path;
-        {
-            int rc = sqlite3_open(dbpath.c_str(), &_db);
-            if (rc != SQLITE_OK)
-            {
-                throw std::runtime_error("failed to open sqllite" + std::string(sqlite3_errmsg(_db)));
-            }
-        }
-
-        //
-        // FOUND_IP TABLE
-        {
-            std::string sql =
-                "CREATE TABLE FOUND_IP("
-                "ID INTEGER PRIMARY KEY AUTOINCREMENT,"
-                "IP CHAR(300),"
-                "PORT INTEGER,"
-                "TYPE CHAR(10),"
-                "COUNTRY CHAR(10),"
-                "DNS CHAR(300),"
-                "UNIXTIME INT,"
-                "NAME TEXT,"
-                "INFO TEXT,"
-                "UNIQUE_ID TEXT"
-                ")";
-            char *zErrMsg = 0;
-            int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
-            if (rc != SQLITE_OK)
-            {
-                // throw std::runtime_error("failed to open sqllite" + std::string(sqlite3_errmsg(db)));
-            }
-        }
-        //
-        // INDEX FOUND_IP
-        {
-            std::string sql = "CREATE INDEX TYPE_AND_IP ON FOUND_IP(IP,PORT,TYPE,UNIXTIME)";
-            char *zErrMsg = 0;
-            int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
-            if (rc != SQLITE_OK)
-            {
-                // throw std::runtime_error("failed to open sqllite" + std::string(sqlite3_errmsg(db)));
-            }
-        }
-
-        //
-        // TARGET_INFO TABLE
-        {
-            std::string sql =
-                "CREATE TABLE TARGET_INFO("
-                "ID INTEGER PRIMARY KEY AUTOINCREMENT,"
-                "UNIQUE_ID CHAR(40),"
-                "TARGET TEXT UNIQUE,"
-                "INFOHASH TEXT,"
-                "NAME TEXT"
-                ")";
-            char *zErrMsg = 0;
-            int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
-            if (rc != SQLITE_OK)
-            {
-                //throw std::runtime_error("failed to open sqllite" + std::string(sqlite3_errmsg(db)));
-            }
-        }
+  //
+  // FOUND_IP TABLE
+  {
+    std::string sql = "CREATE TABLE FOUND_IP("
+                      "ID INTEGER PRIMARY KEY AUTOINCREMENT,"
+                      "IP CHAR(300),"
+                      "PORT INTEGER,"
+                      "TYPE CHAR(10),"
+                      "COUNTRY CHAR(10),"
+                      "DNS CHAR(300),"
+                      "UNIXTIME INT,"
+                      "NAME TEXT,"
+                      "INFO TEXT,"
+                      "UNIQUE_ID TEXT"
+                      ")";
+    char *zErrMsg = 0;
+    int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
+    if (rc != SQLITE_OK) {
+      // throw std::runtime_error("failed to open sqllite" +
+      // std::string(sqlite3_errmsg(db)));
     }
-    void insert_target_info(std::string unique_id, std::string magnetlink, std::string info_hash, std::string name);
-    TargetInfo save_torrent_file(const char *binary, int size)
-    {
-        lt::torrent_info x(binary, size);
-        std::string infohash_hex = my_base_encode::encode_hex(x.info_hash().to_string());
-        std::fstream outfile;
-
-        std::string unique_id = my_base_encode::generate_sha1_string(std::string(binary, size));
-        std::string path = _torrent_file_root_path + "/" + unique_id + ".torrent";
-
-        outfile.open(path, std::ios_base::out | std::ios_base::binary);
-        outfile.write(binary, size);
-        outfile.close();
-        insert_target_info(unique_id, path, infohash_hex, x.name());
-
-        TargetInfo info;
-        info.unique_id = unique_id;
-        info.target = path;
-        info.infohash = infohash_hex;
-        info.name = x.name();
-        return info;
+  }
+  //
+  // INDEX FOUND_IP
+  {
+    std::string sql =
+        "CREATE INDEX TYPE_AND_IP ON FOUND_IP(IP,PORT,TYPE,UNIXTIME)";
+    char *zErrMsg = 0;
+    int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
+    if (rc != SQLITE_OK) {
+      // throw std::runtime_error("failed to open sqllite" +
+      // std::string(sqlite3_errmsg(db)));
     }
+  }
 
-    TargetInfo insert_magnetlink(std::string magnetlink)
-    {
-        auto link = lt::parse_magnet_uri(magnetlink);
-
-        std::string unique_id = my_base_encode::generate_sha1_string(magnetlink);
-        std::string path = _torrent_file_root_path + "/" + unique_id + ".magnetlink";
-        std::fstream outfile;
-        outfile.open(path, std::ios_base::out | std::ios_base::binary);
-        outfile.write(magnetlink.c_str(), magnetlink.size());
-        outfile.close();
-        std::string infohash_hex = my_base_encode::encode_hex(link.info_hashes.get_best().to_string());
-
-        insert_target_info(unique_id, path, infohash_hex, "");
-        TargetInfo info;
-        info.unique_id = unique_id;
-        info.target = path;
-        info.infohash = infohash_hex;
-        info.name = "";
-        return info;
+  //
+  // TARGET_INFO TABLE
+  {
+    std::string sql = "CREATE TABLE TARGET_INFO("
+                      "ID INTEGER PRIMARY KEY AUTOINCREMENT,"
+                      "UNIQUE_ID CHAR(40),"
+                      "TARGET TEXT UNIQUE,"
+                      "INFOHASH TEXT,"
+                      "NAME TEXT"
+                      ")";
+    char *zErrMsg = 0;
+    int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
+    if (rc != SQLITE_OK) {
+      // throw std::runtime_error("failed to open sqllite" +
+      // std::string(sqlite3_errmsg(db)));
     }
+  }
+}
+void insert_target_info(std::string unique_id, std::string magnetlink,
+                        std::string info_hash, std::string name);
+TargetInfo save_torrent_file(const char *binary, int size) {
+  std::cout << "[my_db]save_torrent_file to file" << size << std::endl;
+  lt::torrent_info x(binary, size);
+  std::string infohash_hex =
+      my_base_encode::encode_hex(x.info_hash().to_string());
+  std::fstream outfile;
 
-    void insert_target_info(std::string unique_id, std::string magnetlink, std::string info_hash, std::string name)
-    {
-        std::stringstream ss;
-        ss << "INSERT INTO TARGET_INFO(UNIQUE_ID,TARGET,INFOHASH,NAME) VALUES ("
-           << "'" << unique_id << "',"
-           << "'" << magnetlink << "',"
-           << "'" << info_hash << "',"
-           << "'" << name << "'"
-           << ");";
+  std::string unique_id =
+      my_base_encode::generate_sha1_string(std::string(binary, size));
+  std::string path = _torrent_file_root_path + "/" + unique_id + ".torrent";
 
-        std::string sql = ss.str();
-        std::cout << sql << std::endl;
-        char *zErrMsg = 0;
-        int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
-        if (rc != SQLITE_OK)
-        {
-            throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
-        }
+  outfile.open(path, std::ios_base::out | std::ios_base::binary);
+  outfile.write(binary, size);
+  outfile.close();
+  std::cout << "[my_db]save_torrent_file to db" << std::endl;
+  std::cout << unique_id << std::endl;
+  std::cout << path << std::endl;
+  std::cout << infohash_hex << std::endl;
+  std::cout << x.name() << std::endl;
+
+  insert_target_info(unique_id, path, infohash_hex, x.name());
+
+  std::cout << "[my_db]save_torrent_file to info" << size << std::endl;
+  TargetInfo info;
+  info.unique_id = unique_id;
+  info.target = path;
+  info.infohash = infohash_hex;
+  info.name = x.name();
+
+  return info;
+}
+
+TargetInfo insert_magnetlink(std::string magnetlink) {
+  auto link = lt::parse_magnet_uri(magnetlink);
+
+  std::string unique_id = my_base_encode::generate_sha1_string(magnetlink);
+  std::string path = _torrent_file_root_path + "/" + unique_id + ".magnetlink";
+  std::fstream outfile;
+  outfile.open(path, std::ios_base::out | std::ios_base::binary);
+  outfile.write(magnetlink.c_str(), magnetlink.size());
+  outfile.close();
+  std::string infohash_hex =
+      my_base_encode::encode_hex(link.info_hashes.get_best().to_string());
+
+  insert_target_info(unique_id, path, infohash_hex, "");
+  TargetInfo info;
+  info.unique_id = unique_id;
+  info.target = path;
+  info.infohash = infohash_hex;
+  info.name = "";
+  return info;
+}
+
+void insert_target_info(std::string unique_id, std::string magnetlink,
+                        std::string info_hash, std::string name) {
+  std::stringstream ss;
+  ss << "INSERT INTO TARGET_INFO(UNIQUE_ID,TARGET,INFOHASH,NAME) VALUES ("
+     << "'" << unique_id << "',"
+     << "'" << magnetlink << "',"
+     << "'" << info_hash << "',"
+     << "'" << name << "'"
+     << ");";
+
+  std::string sql = ss.str();
+  std::cout << sql << std::endl;
+  char *zErrMsg = 0;
+  int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
+  if (rc != SQLITE_OK) {
+    throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
+  }
+}
+
+void insert_found_ip(std::string name, std::string ip, int port,
+                     std::string country, std::string dns,
+                     unsigned long int unixtime, std::string info,
+                     std::string type, std::string unique_id) {
+  std::stringstream ss;
+  ss << "INSERT INTO "
+        "FOUND_IP(IP,PORT,COUNTRY,DNS,UNIXTIME,NAME,INFO,TYPE,UNIQUE_ID) "
+        "VALUES ("
+     << "'" << ip << "'," << port << ","
+     << "'" << country << "',"
+     << "'" << dns << "',"
+     << "" << unixtime << ","
+     << "'" << name << "',"
+     << "'" << info << "',"
+     << "'" << type << "',"
+     << "'" << unique_id << "'"
+     << ");";
+
+  std::string sql = ss.str();
+  std::cout << sql << std::endl;
+  char *zErrMsg = 0;
+  int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
+  if (rc != SQLITE_OK) {
+    throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
+  }
+}
+
+int callbackGetMagnetLink(void *context, int argc, char **argv,
+                          char **azColName) {
+  int i;
+  std::vector<std::shared_ptr<TargetInfo>> *targetInfos =
+      (std::vector<std::shared_ptr<TargetInfo>> *)context;
+
+  auto info = std::make_shared<TargetInfo>();
+  for (i = 0; i < argc; i++) {
+    // printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
+    if (std::string(azColName[i]) == "ID") {
+      info->id = (argv[i] == NULL ? -1 : std::stoi(argv[i]));
+    } else if (std::string(azColName[i]) == "TARGET") {
+      info->target = (argv[i] == NULL ? "" : std::string(argv[i]));
+    } else if (std::string(azColName[i]) == "INFOHASH") {
+      info->infohash = (argv[i] == NULL ? "" : std::string(argv[i]));
+    } else if (std::string(azColName[i]) == "NAME") {
+      info->name = (argv[i] == NULL ? "" : std::string(argv[i]));
+    } else if (std::string(azColName[i]) == "UNIQUE_ID") {
+      info->unique_id = (argv[i] == NULL ? "UNIQUE_ID" : std::string(argv[i]));
     }
+  }
+  targetInfos->push_back(info);
+  // std::cout << "-------------2z" << info->infohash << std::endl;
+  // printf("\n");
+  return 0;
+}
 
-    void insert_found_ip(std::string name, std::string ip, int port, std::string country, std::string dns,
-                         unsigned long int unixtime, std::string info, 
-                         std::string type, std::string unique_id)
-    {
-        std::stringstream ss;
-        ss << "INSERT INTO FOUND_IP(IP,PORT,COUNTRY,DNS,UNIXTIME,NAME,INFO,TYPE,UNIQUE_ID) VALUES ("
-           << "'" << ip << "',"
-           << port <<","
-           << "'" << country << "',"
-           << "'" << dns << "',"
-           << "" << unixtime << ","
-           << "'" << name << "',"
-           << "'" << info << "',"
-           << "'" << type << "',"          
-           << "'" << unique_id << "'"          
-           << ");";
-
-        std::string sql = ss.str();
-        std::cout << sql << std::endl;
-        char *zErrMsg = 0;
-        int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
-        if (rc != SQLITE_OK)
-        {
-            throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
-        }
+TargetInfo remove_magnetlink(int id) {
+  //
+  std::vector<std::shared_ptr<TargetInfo>> targetInfos;
+  {
+    std::stringstream ss;
+    ss << "SELECT * FROM TARGET_INFO WHERE id = " << id << ";";
+    std::string sql = ss.str();
+    char *zErrMsg = 0;
+    int rc = sqlite3_exec(_db, sql.c_str(), callbackGetMagnetLink, &targetInfos,
+                          &zErrMsg);
+    if (rc != SQLITE_OK) {
+      throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
     }
+  }
+  if (targetInfos.size() == 0) {
+    // not found
+    return TargetInfo();
+  }
+  {
+    std::stringstream ss;
+    ss << "DELETE FROM TARGET_INFO WHERE id = " << id << ";";
 
-    int callbackGetMagnetLink(void *context, int argc, char **argv, char **azColName)
-    {
-        int i;
-        std::vector<std::shared_ptr<TargetInfo>> *targetInfos = (std::vector<std::shared_ptr<TargetInfo>> *)context;
-
-        auto info = std::make_shared<TargetInfo>();
-        for (i = 0; i < argc; i++)
-        {
-            //printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
-            if (std::string(azColName[i]) == "ID")
-            {
-                info->id = (argv[i] == NULL ? -1 : std::stoi(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "TARGET")
-            {
-                info->target = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "INFOHASH")
-            {
-                info->infohash = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "NAME")
-            {
-                info->name = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "UNIQUE_ID")
-            {
-                info->unique_id = (argv[i] == NULL ? "UNIQUE_ID" : std::string(argv[i]));
-            }
-        }
-        targetInfos->push_back(info);
-        //std::cout << "-------------2z" << info->infohash << std::endl;
-        //printf("\n");
-        return 0;
+    std::string sql = ss.str();
+    std::cout << ">>" << sql << std::endl;
+    char *zErrMsg = 0;
+    int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
+    if (rc != SQLITE_OK) {
+      std::cout << sqlite3_errmsg(_db) << std::endl;
+      throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
     }
+  }
+  {
+    std::string target = targetInfos[0]->target;
+    std::string unique_id = targetInfos[0]->unique_id;
+    std::remove(target.c_str());
+  }
+  TargetInfo info;
+  info.unique_id = targetInfos[0]->unique_id;
+  info.target = targetInfos[0]->target;
+  info.infohash = targetInfos[0]->infohash;
+  info.name = targetInfos[0]->name;
+  return info;
+}
 
-    TargetInfo remove_magnetlink(int id)
-    {
-        //
-        std::vector<std::shared_ptr<TargetInfo>> targetInfos;
-        {
-            std::stringstream ss;
-            ss << "SELECT * FROM TARGET_INFO WHERE id = " << id << ";";
-            std::string sql = ss.str();
-            char *zErrMsg = 0;
-            int rc = sqlite3_exec(_db, sql.c_str(), callbackGetMagnetLink, &targetInfos, &zErrMsg);
-            if (rc != SQLITE_OK)
-            {
-                throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
-            }
-        }
-        if (targetInfos.size() == 0)
-        {
-            // not found
-            return TargetInfo();
-        }
-        {
-            std::stringstream ss;
-            ss << "DELETE FROM TARGET_INFO WHERE id = " << id << ";";
+void get_target_info(std::vector<std::shared_ptr<TargetInfo>> &targetInfos) {
+  std::string sql = "SELECT * FROM TARGET_INFO;";
+  char *zErrMsg = 0;
+  int rc = sqlite3_exec(_db, sql.c_str(), callbackGetMagnetLink, &targetInfos,
+                        &zErrMsg);
+  if (rc != SQLITE_OK) {
+    throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
+  }
+}
 
-            std::string sql = ss.str();
-            std::cout << ">>" << sql << std::endl;
-            char *zErrMsg = 0;
-            int rc = sqlite3_exec(_db, sql.c_str(), callback, 0, &zErrMsg);
-            if (rc != SQLITE_OK)
-            {
-                std::cout << sqlite3_errmsg(_db) << std::endl;
-                throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
-            }
-        }
-        {
-            std::string target = targetInfos[0]->target;
-            std::string unique_id = targetInfos[0]->unique_id;
-            std::remove(target.c_str());
-        }
-        TargetInfo info;
-        info.unique_id = targetInfos[0]->unique_id;
-        info.target = targetInfos[0]->target;
-        info.infohash = targetInfos[0]->infohash;
-        info.name = targetInfos[0]->name;
-        return info;
+int callbackGetPeerInfo(void *context, int argc, char **argv,
+                        char **azColName) {
+  int i;
+  std::vector<std::shared_ptr<FoundIp>> *targetInfos =
+      (std::vector<std::shared_ptr<FoundIp>> *)context;
+  // std::cout << "callback" << *((std::string*)NotUsed)<<std::endl;
+
+  auto info = std::make_shared<FoundIp>();
+  for (i = 0; i < argc; i++) {
+    // printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
+    if (std::string(azColName[i]) == "ID") {
+      info->id = (argv[i] == NULL ? -1 : std::stoi(argv[i]));
+    } else if (std::string(azColName[i]) == "DNS") {
+      info->dns = (argv[i] == NULL ? "" : std::string(argv[i]));
+    } else if (std::string(azColName[i]) == "UNIXTIME") {
+      info->unixtime = (argv[i] == NULL ? -1 : std::stoi(argv[i]));
+    } else if (std::string(azColName[i]) == "IP") {
+      info->ip = (argv[i] == NULL ? "" : std::string(argv[i]));
+    } else if (std::string(azColName[i]) == "PORT") {
+      info->port = (argv[i] == NULL ? -1 : std::stoi(argv[i]));
+    } else if (std::string(azColName[i]) == "COUNTRY") {
+      info->country = (argv[i] == NULL ? "" : std::string(argv[i]));
+    } else if (std::string(azColName[i]) == "NAME") {
+      info->name = (argv[i] == NULL ? "" : std::string(argv[i]));
+    } else if (std::string(azColName[i]) == "INFO") {
+      info->info = (argv[i] == NULL ? "" : std::string(argv[i]));
+    } else if (std::string(azColName[i]) == "TYPE") {
+      info->type = (argv[i] == NULL ? "" : std::string(argv[i]));
+    } else if (std::string(azColName[i]) == "UNIQUE_ID") {
+      info->unique_id = (argv[i] == NULL ? "" : std::string(argv[i]));
     }
+  }
+  targetInfos->push_back(info);
+  // printf("\n");
+  return 0;
+}
 
-    void get_target_info(std::vector<std::shared_ptr<TargetInfo>> &targetInfos)
-    {
-        std::string sql = "SELECT * FROM TARGET_INFO;";
-        char *zErrMsg = 0;
-        int rc = sqlite3_exec(_db, sql.c_str(), callbackGetMagnetLink, &targetInfos, &zErrMsg);
-        if (rc != SQLITE_OK)
-        {
-            throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
-        }
-    }
+int callbackGetPeerInfoForExistCheck(void *context, int argc, char **argv,
+                                     char **azColName) {
+  int *v = (int *)context;
+  *v += argc;
+  return 0;
+}
+bool alreadtExist(std::string ip, int port, std::string type) {
+  std::stringstream ss;
+  time_t curret_unix_time = time(nullptr);
+  ss << "SELECT * FROM FOUND_IP WHERE "
+     << " IP = '" << ip << "' "       //
+     << " AND PORT = " << port << " " //
+     << " AND TYPE = '" << type << "' "
+     << " AND UNIXTIME >= " << (curret_unix_time - _the_range_of_time); //
 
-    int callbackGetPeerInfo(void *context, int argc, char **argv, char **azColName)
-    {
-        int i;
-        std::vector<std::shared_ptr<FoundIp>> *targetInfos = (std::vector<std::shared_ptr<FoundIp>> *)context;
-        //std::cout << "callback" << *((std::string*)NotUsed)<<std::endl;
+  int count = 0;
+  std::string sql = ss.str();
+  char *zErrMsg = 0;
+  // std::cout << "[DEBUG KY] 0:" << sql << std::endl;
+  int rc = sqlite3_exec(_db, sql.c_str(), callbackGetPeerInfoForExistCheck,
+                        &count, &zErrMsg);
+  if (rc != SQLITE_OK) {
+    // throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
+    return false;
+  }
+  // std::cout << "[DEBUG KY] 1:" << count << std::endl;
+  return count > 0;
+}
+void get_peer_info(std::vector<std::shared_ptr<FoundIp>> &targetInfos,
+                   int idmin, int limit, std::string country, std::string ip,
+                   int from_sec_to_now) {
+  std::cout << idmin << "," << limit << "," << country << std::endl;
+  std::stringstream ss;
+  ss << "SELECT * FROM FOUND_IP WHERE ID >= " << idmin << " ";
+  if (country.length() != 0) {
+    ss << " AND COUNTRY = '" << country << "' ";
+  }
+  if (ip.length() != 0) {
+    ss << " AND IP = '" << ip << "' ";
+  }
+  if (from_sec_to_now > 0) {
+    time_t current_unix_time = time(nullptr);
+    ss << " AND UNIXTIME  >= " << (current_unix_time - from_sec_to_now) << " ";
+  }
+  ss << " LIMIT " << limit << " ";
+  ss << ";";
+  std::string sql = ss.str();
+  std::cout << sql << std::endl;
 
-        auto info = std::make_shared<FoundIp>();
-        for (i = 0; i < argc; i++)
-        {
-            //printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
-            if (std::string(azColName[i]) == "ID")
-            {
-                info->id = (argv[i] == NULL ? -1 : std::stoi(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "DNS")
-            {
-                info->dns = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "UNIXTIME")
-            {
-                info->unixtime= (argv[i] == NULL ? -1 : std::stoi(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "IP")
-            {
-                info->ip = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "PORT")
-            {
-                info->port = (argv[i] == NULL ? -1 : std::stoi(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "COUNTRY")
-            {
-                info->country = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "NAME")
-            {
-                info->name = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "INFO")
-            {
-                info->info = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "TYPE")
-            {
-                info->type = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            else if (std::string(azColName[i]) == "UNIQUE_ID")
-            {
-                info->unique_id = (argv[i] == NULL ? "" : std::string(argv[i]));
-            }
-            
-        }
-        targetInfos->push_back(info);
-        //printf("\n");
-        return 0;
-    }
-
-    int callbackGetPeerInfoForExistCheck(void *context, int argc, char **argv, char **azColName){
-        int *v = (int*) context;
-        *v += argc;
-        return 0;
-    }
-    bool alreadtExist(std::string ip, int port, std::string type) {
-        std::stringstream ss;
-        time_t curret_unix_time = time(nullptr);
-        ss << "SELECT * FROM FOUND_IP WHERE "
-        << " IP = '" << ip << "' " //
-        << " AND PORT = " << port << " " //
-        << " AND TYPE = '" << type << "' "
-        << " AND UNIXTIME >= " << (curret_unix_time-_the_range_of_time)
-        ; //
-    
-        int count= 0;
-        std::string sql = ss.str();
-        char *zErrMsg = 0;
-        //std::cout << "[DEBUG KY] 0:" << sql << std::endl;
-        int rc = sqlite3_exec(_db, sql.c_str(), callbackGetPeerInfoForExistCheck, &count, &zErrMsg);
-        if (rc != SQLITE_OK)
-        {
-            //throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
-            return false;
-        }
-        //std::cout << "[DEBUG KY] 1:" << count << std::endl;
-        return count > 0;
-    }
-    void get_peer_info(std::vector<std::shared_ptr<FoundIp>> &targetInfos, int idmin, int limit, std::string country, std::string ip, int from_sec_to_now)
-    {
-        std::cout << idmin << "," << limit << "," << country << std::endl;
-        std::stringstream ss;
-        ss << "SELECT * FROM FOUND_IP WHERE ID >= " << idmin << " ";
-        if(country.length() != 0) {
-            ss << " AND COUNTRY = '"<< country << "' ";
-        }
-        if(ip.length() != 0) {
-            ss << " AND IP = '"<< ip << "' ";
-        }
-        if(from_sec_to_now > 0) {
-            time_t current_unix_time = time(nullptr);
-            ss << " AND UNIXTIME  >= "<< (current_unix_time-from_sec_to_now) << " ";
-        }
-        ss << " LIMIT " << limit << " ";        
-        ss << ";";
-        std::string sql = ss.str();
-        std::cout << sql << std::endl;
-
-        char *zErrMsg = 0;
-        int rc = sqlite3_exec(_db, sql.c_str(), callbackGetPeerInfo, &targetInfos, &zErrMsg);
-        if (rc != SQLITE_OK)
-        {
-            throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
-        }
-    }
+  char *zErrMsg = 0;
+  int rc = sqlite3_exec(_db, sql.c_str(), callbackGetPeerInfo, &targetInfos,
+                        &zErrMsg);
+  if (rc != SQLITE_OK) {
+    throw std::runtime_error(std::string(sqlite3_errmsg(_db)));
+  }
+}
 
 } // namespace my_db

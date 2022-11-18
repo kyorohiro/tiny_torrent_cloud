@@ -1,7 +1,7 @@
 #include<iostream>
 # define BOOST_TEST_MAIN
 #include <boost/test/included/unit_test.hpp>
-#include <my_ip_country_detector.hpp>
+#include "my_ip_country_detector.hpp"
 
 std::string setting_ipv4_cvs_path = "./res/ip2country/IP2LOCATION-LITE-DB1.CSV";
 std::string setting_ipv6_cvs_path = "./res/ip2country/IP2LOCATION-LITE-DB1.IPV6.CSV";
