@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
   server_thread = std::thread(start_http_server_on_thread, 3); // NULL);
 
   // start torrent
-  //torrent_thread = std::thread(start_torrent_client_on_thread, 3); // NULL);
+  torrent_thread = std::thread(start_torrent_client_on_thread, 3); // NULL);
 
   //
   // wait
